@@ -1,12 +1,12 @@
 # 志愿服务平台前端
 
-技术栈为 React + TypeScript，组件与测试使用 `.tsx`，接口、类型及配置使用 `.ts`。统一使用 Yarn 1.22.22，依赖版本由 `yarn.lock` 锁定；不维护 npm 锁文件。`yarn typecheck` 对源码、测试和 Vite 配置启用严格类型检查，`yarn build` 会先执行类型检查。
+建议使用 Node.js 24 LTS。React + TypeScript（组件与测试用 `.tsx`，接口、类型与配置用 `.ts`），Vite 构建。统一使用 Yarn 1.22.22，依赖由 `yarn.lock` 锁定，不维护 npm 锁文件。`yarn typecheck` 对源码、测试和 Vite 配置启用严格检查，`yarn build` 会先执行它。
 
-沿用 `preview/` 已确认设计：操作蓝 #2457d6、白色工作区、226px 侧栏和 76px 顶栏。760px 以下提供抽屉导航，宽表格在容器内滚动，材料与公开问卷使用单列布局；使用本地中文字体与内嵌 SVG。
+界面沿用已确认设计：操作蓝 #2457d6、白色工作区、226px 侧栏、76px 顶栏，支持浅色/深色主题；760px 及以下使用原生对话框抽屉导航，项目台账切换为紧凑列表，其余宽表格在容器内滚动；使用本地中文字体与内嵌 SVG。
 
 ## 启动
 
-仓库根目录执行 `go run ./cmd/api`。另开终端：
+先在仓库根目录运行 `go run ./cmd/api`，再：
 
 ```powershell
 cd web
@@ -14,75 +14,84 @@ yarn install --frozen-lockfile
 yarn dev
 ```
 
-访问 `http://localhost:5173`。Vite 将同源 `/api` 与 SSO 回调代理至 `127.0.0.1:8080`。学校 SSO 域名、回调和 FRONTEND_URL 配置见根目录 README，不要混用 localhost 与 127.0.0.1。
+访问 `http://localhost:5173`。Vite 将同源 `/api` 和 SSO 回调代理到 `127.0.0.1:8080`，修改代理配置后需重启。SSO 域名、回调与 `FRONTEND_URL` 见[根目录 README](../README.md)，不要混用 `localhost` 与 `127.0.0.1`。
 
-## 页面与接口边界
+## 页面与路由
 
-| 页面 | 路由 | 已完成行为 |
+| 路由 | 页面 | 可见角色 |
 | --- | --- | --- |
-| 登录 | `/login` | 账号密码、密码显隐、学校统一认证、错误重试 |
-| 首次设密 | `/set-password` | SSO 新账号强制设密，后端继续校验受保护业务接口 |
-| 个人信息 | `/profile` | 真实资料、用户组、会话刷新、退出，不展示 sub |
-| 工作台 | `/activity` | 真实统计、待跟进、近期项目、新建立项、完整详情入口 |
-| 项目台账 | `/projects` | 真实 API 分页、名称/编号搜索、十二状态和部门筛选、勾选导出 CSV、新建立项 |
-| 项目概览 | `/projects/:id` | 真实基础资料和状态；本次会话场次、岗位与计划人数草稿 |
-| 招募登记 | `/projects/:id?tab=recruit` | 手动名单、批量预检、重复编号拦截、筛选、草稿 CSV 导出 |
-| 录入与审核 | `/projects/:id?tab=review` | 流程和权限说明、未接入状态，不伪造审批记录 |
-| 操作记录 | `/projects/:id?tab=history` | 服务器创建/更新时间，不推断中间操作 |
-| 时长管理 | `/hours` | 搜索与分页选择有权管理的项目 |
-| 时长登记 | `/hours?project=:id` | 使用草稿场次与已分配人员，整数小时校验、批量填写、会话草稿、草稿快照和 CSV 导出 |
-| 项目材料 | `/materials`、`/materials?project=:id` | 项目选择、服务对象多选、实时申请表预览、独立 HTML 草稿下载 |
-| 项目报名问卷 | `/signup?project=项目ID` | 项目发布的报名、问卷与签到入口 |
-| 独立 HTML 原型 | `/preview/` | 原有七页 HTML 样例，演示数据与正式页面分离 |
+| `/login`、`/set-password` | 登录（账号密码/学校统一认证）、SSO 新账号强制设密 | 未登录/新账号 |
+| `/profile` | 个人信息、手机号绑定、主题、退出 | 所有登录用户 |
+| `/recruitment`、`/my-services` | 招募活动、我的服务 | 正式用户 |
+| `/signup?project=ID` | 项目公开报名、问卷与签到入口 | 允许匿名 |
+| `/activity` | 工作台：统计、待跟进、近期项目、新建立项 | 管理员 |
+| `/projects`、`/projects/:id` | 项目台账（搜索、十二状态/部门筛选、分页）与项目工作流（立项、招募问卷与二维码、成员、附件1、现场出勤、时长、操作记录） | 管理员 |
+| `/approvals` | 项目与变更审批 | 数据管理员、超管 |
+| `/hours`、`/materials` | 时长管理、项目材料（附件1） | 管理员 |
+| `/users` | 成员管理、添加成员与 CSV 导入 | 超管 |
 
-管理路由先验证服务器会话，身份恢复后保留深链接和查询参数。项目发布的问卷链接允许匿名访问；独立公开报名展示页已移除，不带项目参数的 `/signup` 返回登录页或当前账号工作台。
+管理路由先验证服务器会话，恢复身份后保留深链接和查询参数。接口契约见 [OpenAPI](../docs/openapi.yaml)，权限与流程见 [权限及施工设计](../docs/task-02-project-workflow.md)，服务端始终独立校验角色与数据范围。
 
-接口契约见 [OpenAPI](../docs/openapi.yaml)。活动管理员仅读取本人创建的项目，超管读取全部项目，服务端独立验证角色和数据范围。台账搜索覆盖全部授权数据，每页 20 条，不局限于首页最近 12 项；统计为全部时间、当前权限范围内的记录。台账负责人对应当前创建项目的活动负责人，不冒充数据组负责人。
+## 业务约定
 
-## 草稿与尚未接入的功能
-
-**页面已覆盖，完整业务持久化尚未完成。** 当前服务器仅提供认证、首页、项目列表、新建立项和基础详情。生产页面不内置演示项目、人员、时长或日志，空库显示空状态。
-
-招募、场次、时长与材料编辑保留在 React 会话内存中，同一项目各页面共享；刷新或退出后清除，不写入 localStorage 或 sessionStorage。相关页面显示草稿说明，不将前端填写显示为服务器提交成功。项目基础信息与业务状态不会因这些草稿改变。
-
-- 场次起止时间必须位于项目日期内，按时间差向下取整得到每人可填写的整数小时上限。招募草稿需明确分配场次，未分配人员不会自动计入时长表。
-- 人员编号按文本处理，保留前导零。批量粘贴四列：姓名、人员编号、学院/部门、岗位；不含表头，Tab 分隔。缺列或重复编号须先修正。
-- 时长每人须填写 0 到场次上限的整数，空值不等于 0。认定时长显示「—」，正式复核提交按钮禁用；本次会话快照不冒充服务器审核快照。
-- 材料左侧编辑实时更新右侧，下载可独立打开与打印的 HTML。内容进行 HTML 转义，CSV 处理公式前缀。材料仅为附件1版式草稿，学校正式模板、免审密码及服务端版本归档尚未接入。
-- 公开填写预览只用虚构信息，不创建报名、修改凭证或身份关联。真实发布链接、二维码、报名提交及本人修改需后端模块。
-- 项目编辑、状态流转、协作授权、最终审核、外部系统录入、地图选址与历史迁移需服务端及后续页面扩展。
-
-报名不自动产生时长，保留草稿不代表审核通过，下载材料不推进项目状态；活动管理员不能最终通过或驳回时长认定。
+- 报名、签到、保存时长或下载材料不推进项目状态；出勤不自动产生时长。
+- 时长为整数小时，空值（未登记）不等于 0；补录、更正需填写理由。写入提交 `X-Workflow-Version`，版本冲突时刷新后重试，不静默覆盖。
+- 人员编号按文本处理，保留前导零。CSV 导出与材料内容做公式前缀及 HTML 转义。
+- 未满足开放条件的子页面只显示原因说明（如立项未通过、最早场次未结束）。
+- 认定时长仅在审核结果公布后展示，未公布为 `null`；活动管理员不能最终通过或驳回时长认定。
+- 附件3 尚未实现，界面不提供入口；附件1 继续支持预览、生成与下载。
 
 ## 认证
 
-启动请求 auth/me，401 返回登录，网络与服务故障提供重试。学校统一认证通过后端整页导航；新 SSO 身份的 password_setup_required 强制进入设密页，设置 12 至 72 字节密码后才能访问管理功能。密码、上游令牌及身份不写入浏览器持久化存储。退出仅在服务器确认成功后清空身份和草稿，失败保留当前页面以便重试。
-
-auth_method=session 显示「已通过会话验证」，不推断原始登录方式；用户组仅展示服务器实际返回值。没有公开注册、找回密码或资料修改接口。
+启动时请求 `/auth/me`：401 转登录，网络或服务故障提供重试。学校统一认证通过整页导航完成；`password_setup_required` 强制进入设密页（12–72 字节），之后才能访问管理功能。密码、令牌与身份不写入浏览器持久化存储（仅主题偏好存于 localStorage）。退出在服务器确认成功后才清空本地身份，失败时保留页面以便重试。没有公开注册或找回密码。
 
 ## 校验
 
 ```powershell
-yarn test
+yarn test           # Vitest（jsdom）
 yarn typecheck
 yarn format:check
-yarn build
+yarn build          # 产物位于 dist/
 ```
 
-25 项 Vitest 测试覆盖认证、SSO 强制设密、首页、台账搜索与重置、深链接、过期会话、前导零、批量重复名单、招募到时长草稿、整数上限、退出清理、公开填写预览、HTML 转义和 CSV 公式前缀。
+### 浏览器检查
 
-浏览器检查使用隔离的 Edge 无头实例和模拟 API，示例数据只存在于检查脚本。先启动 Vite，再执行：
-
-```powershell
-# 默认 Windows Edge 路径，按实际安装位置覆盖。
-$env:EDGE_PATH = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
-$env:WORKSPACE_CHECK_OUTPUT = 'E:/volun-data-check/full-frontend'
+```sh
 yarn test:browser
 ```
 
-可通过 WORKSPACE_CHECK_ORIGIN 覆盖默认 localhost:5173。脚本校验工作台、台账、详情、招募、时长、材料和公开填写在 1440、1024、768、375px 共 28 个页面/宽度组合，保存截图并检查整页横向溢出；另测试场次/名单/时长连续操作、移动导航和材料下载，不连接真实生产 API。尚未进行学校真实 SSO 和 PostgreSQL 联调。
+`check-workspace.cjs` 自动启动 `127.0.0.1:4175` 的 Vite，退出时关闭服务；模拟 API 覆盖台账搜索、筛选恢复、选择、加载和错误重试，以及导航焦点、响应式布局和浅深主题；`check-components.cjs` 另检查原生弹窗、滚动隔离、标签页键盘操作、输入错误、触屏尺寸、高对比度，并用 axe-core 扫描 13 个页面和状态。截图保存在 `web/browser-check/`（已忽略），模拟数据只用于验证。
 
-C: 空间不足时可将 YARN_CACHE_FOLDER、TEMP、TMP 指向有空间的工作目录。构建产物位于 dist/。
+共享 `browser-options.cjs` 优先使用 `BROWSER_EXECUTABLE_PATH` 指定的浏览器，其次使用 `BROWSER_CHANNEL`（如 `chrome`、`msedge`），否则查找常见系统 Chrome/Chromium/Edge 与 Playwright Chromium。不再依赖写死的 Windows 路径。
 
-正式部署需将 login、set-password、profile、activity、projects、projects/:id、hours、materials、signup 路由回退至 index.html；API、SSO 发起及回调交由 Go 服务处理。
+如果没有浏览器，可运行 `yarn exec playwright-core install chromium`。也可指定现有安装：
 
+```sh
+BROWSER_EXECUTABLE_PATH=/usr/bin/chromium yarn test:browser
+# 使用已启动的前端；设置 BASE_URL 后不自动启动服务
+BASE_URL=http://localhost:5173 yarn test:browser
+```
+
+PowerShell 使用 `$env:BROWSER_EXECUTABLE_PATH = 'C:\Program Files\Google\Chrome\Application\chrome.exe'`，再运行命令。
+
+已有场景脚本 `verify-members-ui.cjs`、`verify-recruitment-ui.cjs`（支持 `--dark`）、`verify-theme-ui.cjs`、`verify-volunteer-ui.cjs` 使用相同浏览器配置，但需要先启动 Vite，再用 `node <脚本>` 执行；默认地址 `http://127.0.0.1:5173`，可用 `BASE_URL` 覆盖，截图写入系统临时目录。这些检查不替代真实学校 SSO 和 PostgreSQL 联调。
+
+## 界面维护
+
+- 管理页、工作台、个人空间及公开报名、本人记录、时长意向、签到页面共用 `components/WorkspaceShell.tsx`，由 `Sidebar.tsx` 按角色提供导航；顶部提供“跳到主要内容”。公开页面恢复身份后同步应用会话，切回列表和浏览器后退时保留登录状态；访客保留个人空间入口和登录入口，不显示管理员菜单。新增页面复用外壳，避免导航与主题行为分叉。
+- 移动导航使用原生 `<dialog>`，通过 `showModal()` 打开，支持关闭按钮、Escape、点击遮罩和选择页面后关闭；焦点与背景交互由浏览器管理，允许键盘用户进入浏览器工具栏。`Modal`、导航和 Word 预览共用 `useModalDialog` 生命周期，不手工捕获 Tab 或改写根元素的 overflow。
+- 在 `theme.css` 中维护语义颜色变量，页面通过变量支持浅深主题。操作蓝用于当前导航、关键操作和交互反馈；状态同时显示文字，不只依赖颜色。
+- 760px 及以下的项目台账显示列表，保留批量选择和详情、成员、时长、材料入口；桌面保留完整表格，部分选择时全选框显示半选状态。新请求清空旧选择，避免导出旧筛选结果。
+- 数据加载期间不显示虚假的零结果，首次加载用静态骨架；筛选无匹配提供清除入口，错误提供重试。长项目名称、部门与人员编号允许换行，保留编号前导零。
+- 滚动条使用主题变量、`scrollbar-color` 和 `scrollbar-width`；旧 WebKit 仅在标准颜色属性不支持时使用回退。触屏保留原生滚动条，高对比度恢复常规宽度；不要隐藏滚动条或接管滚轮。
+- 宽表格复用 `ScrollRegion`，支持 Tab 聚焦后使用方向键滚动。弹窗的 CSS 滚动隔离采用渐进增强，长弹窗始终保留顶部关闭入口，详见[界面检查记录](../docs/ui-review.md)。
+- 项目标签页使用 `tablist`/`tab`/`tabpanel`；方向键和 Home/End 仅移动焦点，Enter 或空格切换内容，避免操作方向键时打断正在填写的长表单。
+- 使用共享 `Modal`、`Badge` 和 `Icon`；表单有可访问名称，错误用 `role="alert"`，进度与成功消息用 `role="status"`。验证键盘操作、320px 手机、平板、桌面和两种主题。
+- 表单复用 `ValidatedForm`，保留字段标签和简短输入提示。字段失焦或提交后用红框和 `aria-invalid` 标记错误，提交失败时聚焦首个错误字段，改正后清除标记。密码按 UTF-8 字节校验，与后端规则一致；界面不展示长度规则，不截断用户输入。
+- 成员与时长的表格粘贴复用 `TableImport`，按单元格检查并允许修正，保留编号前导零，区分空时长和 0。平台成员 CSV 导入使用服务端返回的 `error_field` 定位错误，预览不回传明文密码。
+- 保存成功与随后刷新失败分别反馈，避免将已完成的写入显示成失败；用户操作记录显示业务名称，未知操作使用通用名称。
+- 保留减少动态效果偏好，不添加装饰性加载动画；不把权限判断或模拟数据当作服务端授权。
+
+## 部署
+
+将 `login`、`set-password`、`profile`、`activity`、`projects`、`approvals`、`hours`、`materials`、`users`、`recruitment`、`my-services`、`signup` 等前端路由回退到 `index.html`；`/api`、SSO 发起 `/api/v1/auth/sso/start` 及回调 `/auth/sso/callback` 交给 Go 服务。

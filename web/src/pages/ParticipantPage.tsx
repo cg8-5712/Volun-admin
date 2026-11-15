@@ -1,13 +1,13 @@
+import ValidatedForm from "../components/ValidatedForm.tsx";
 import { VolunteerGuarantees } from "../components/VolunteerGuarantees.tsx";
-import { useEffect, useState } from "react";
-import { Brand } from "../components/WorkspaceShell.tsx";
+import { useEffect, useRef, useState } from "react";
+import WorkspaceShell from "../components/WorkspaceShell.tsx";
 import {
   request,
   attendanceNames,
   memberAssignments,
 } from "../lib/workflow.ts";
 import AssignmentPicker from "../components/AssignmentPicker.tsx";
-import ThemeSelect from "../components/ThemeSelect.tsx";
 import PhoneBinding from "../components/PhoneBinding.tsx";
 import { profileComplete } from "../lib/profile.ts";
 import type { AuthSession } from "../types.ts";
@@ -20,7 +20,14 @@ import type {
   Assignment,
 } from "../lib/workflow.ts";
 
-export default function ParticipantPage() {
+export default function ParticipantPage({
+  onNavigate = (path) => location.assign(path),
+  onSessionChange,
+}: {
+  onNavigate?: (path: string) => void;
+  onSessionChange?: (session: AuthSession | null) => void;
+} = {}) {
+  const lifetime = useRef({ active: false });
   const [loading, setLoading] = useState(true);
   const params = new URLSearchParams(location.search),
     project = params.get("project") || "",
@@ -29,6 +36,11 @@ export default function ParticipantPage() {
     token = params.get("token") || "";
   const base = `/public/projects/${encodeURIComponent(project)}`;
   const [identity, setIdentity] = useState<AuthSession | null>(null);
+  const updateIdentity = (session: AuthSession | null) => {
+    if (!lifetime.current.active) return;
+    setIdentity(session);
+    onSessionChange?.(session);
+  };
   const [entry, setEntry] = useState<"choose" | "password" | "manual">(
     "choose",
   );
@@ -69,25 +81,29 @@ export default function ParticipantPage() {
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false);
-  const [intent, setIntent] = useState("申请录入"),
+  const [intent, setIntent] = useState(""),
     [platform, setPlatform] = useState("");
+  const [loggingOut, setLoggingOut] = useState(false);
   const [key] = useState(() => crypto.randomUUID());
   const continueSetup = () => {
+    if (!lifetime.current.active) return;
     sessionStorage.setItem(
       "participant_return",
       location.pathname + location.search,
     );
     location.href = "/set-password";
   };
-  const refresh = async () => {
-    if (formID) setForm(await request(`${base}/forms/${formID}`));
+  const refresh = async (current = lifetime.current) => {
+    if (!current.active) return;
+    // Restore navigation identity even when the linked form is closed or unavailable.
     try {
       const authenticated = await request<AuthSession>("/auth/me");
+      if (!current.active) return;
       if (authenticated.password_setup_required) {
         continueSetup();
         return;
       }
-      setIdentity(authenticated);
+      updateIdentity(authenticated);
       setMember((previous) => ({
         ...previous,
         name: authenticated.user.name || "",
@@ -95,28 +111,42 @@ export default function ParticipantPage() {
         phone: authenticated.user.phone || previous.phone,
       }));
     } catch (cause) {
+      if (!current.active) return;
       if ((cause as { status?: number }).status !== 401) throw cause;
-      setIdentity(null);
+      updateIdentity(null);
     }
-    if (sessionID)
-      setScan(
-        await request(
-          `${base}/sessions/${sessionID}/scan?token=${encodeURIComponent(token)}`,
-        ),
+    if (formID) {
+      const published = await request<NonNullable<typeof form>>(
+        `${base}/forms/${formID}`,
       );
+      if (!current.active) return;
+      setForm(published);
+    }
+    if (sessionID) {
+      const scanned = await request<NonNullable<typeof scan>>(
+        `${base}/sessions/${sessionID}/scan?token=${encodeURIComponent(token)}`,
+      );
+      if (!current.active) return;
+      setScan(scanned);
+    }
     try {
       const me = await request<NonNullable<typeof own>>(`${base}/me`);
+      if (!current.active) return;
       setOwn(me);
       setMember({ ...me.member, notes: me.member.notes || "" });
       setAssignments(memberAssignments(me.member));
-      setIntent(me.member.intent === "未填写" ? "申请录入" : me.member.intent);
+      setIntent(me.member.intent === "未填写" ? "" : me.member.intent);
       setPlatform(me.member.platform);
-    } catch {
-      /* Anonymous visitors may read the form, never another response. */
+    } catch (cause) {
+      if (!current.active) return;
+      const status = (cause as { status?: number }).status;
+      if (status !== 401 && status !== 403 && status !== 404) throw cause;
+      setOwn(null);
     }
   };
   useEffect(() => {
-    let active = true;
+    const current = { active: true };
+    lifetime.current = current;
     setLoading(true);
     (async () => {
       const hash = new URLSearchParams(location.hash.slice(1));
@@ -124,21 +154,21 @@ export default function ParticipantPage() {
       if (grant) {
         history.replaceState(null, "", location.pathname + location.search);
         await request(`${base}/access`, { credential: grant });
-        if (active) setNotice("本人访问凭证已验证。");
+        if (!current.active) return;
       }
       if (params.has("sso")) {
         setError("学校统一认证未完成，可重试，或使用账号密码登录、手动填写。");
       }
-      await refresh();
+      await refresh(current);
     })()
       .catch((e) => {
-        if (active) setError(e.message);
+        if (current.active) setError(e.message);
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (current.active) setLoading(false);
       });
     return () => {
-      active = false;
+      current.active = false;
     };
   }, [project, formID, sessionID]);
   const run = async (operation: () => Promise<void>) => {
@@ -154,6 +184,13 @@ export default function ParticipantPage() {
       setBusy(false);
     }
   };
+  const refreshAfterSave = async () => {
+    try {
+      await refresh();
+    } catch {
+      setError("已保存，页面刷新失败，请刷新页面。");
+    }
+  };
   const login = () => {
     sessionStorage.setItem(
       "participant_return",
@@ -167,38 +204,66 @@ export default function ParticipantPage() {
       [field]: value,
       ...(field === "session_id" ? { position_id: "" } : {}),
     }));
+  const credentialFromLink = (value: string) => {
+    try {
+      const link = new URL(value);
+      if (
+        link.origin !== location.origin ||
+        link.pathname !== "/signup" ||
+        link.searchParams.get("project") !== project
+      )
+        return "";
+      return new URLSearchParams(link.hash.slice(1)).get("credential") || "";
+    } catch {
+      return "";
+    }
+  };
   const returnURL =
     location.origin +
     `/signup?project=${encodeURIComponent(project)}#credential=${encodeURIComponent(savedCredential)}`;
   return (
-    <main className="public-page workflow-participant">
-      <div className="public-brand">
-        <Brand />
-        <span className="activity-badge">
-          {sessionID
-            ? "现场出勤"
-            : form?.kind === "intent"
-              ? "时长意向"
-              : "项目登记"}
-        </span>
-        <ThemeSelect />
-        <a className="button secondary" href="/my-services">
-          我的服务
-        </a>
-      </div>
+    <WorkspaceShell
+      session={identity}
+      route={own ? "/my-services" : "/recruitment"}
+      crumb={
+        sessionID
+          ? "现场出勤"
+          : form?.kind === "intent"
+            ? "时长意向"
+            : own
+              ? "报名记录"
+              : "项目登记"
+      }
+      space="个人空间"
+      contentClassName="public-page workflow-participant"
+      onNavigate={onNavigate}
+      logoutPending={loggingOut}
+      logout={() =>
+        void run(async () => {
+          setLoggingOut(true);
+          try {
+            await request("/auth/logout", {});
+            updateIdentity(null);
+            onNavigate("/login");
+          } finally {
+            setLoggingOut(false);
+          }
+        })
+      }
+    >
       <header className="public-header">
         <h1>
           {scan?.project || form?.project || own?.project || "志愿服务登记"}
         </h1>
         <p>
           {loading
-            ? "正在读取项目登记信息，请稍候。"
+            ? "正在加载…"
             : scan
               ? `${attendanceNames[scan.action]} · 请确认本人报名记录`
               : form?.form.description ||
                 (form?.kind === "recruit"
                   ? "填写姓名、学号和电话，选择参加场次及岗位即可报名。"
-                  : "使用学校账号或专属报名凭证访问本人记录。")}
+                  : "")}
         </p>
       </header>
       {form && <VolunteerGuarantees value={form} />}
@@ -248,7 +313,7 @@ export default function ParticipantPage() {
               <p>手动填写的身份信息将在报名后由管理员核实。</p>
             )}
             {entry === "password" && (
-              <form
+              <ValidatedForm
                 className="workflow-form"
                 onSubmit={(event) => {
                   event.preventDefault();
@@ -276,6 +341,9 @@ export default function ParticipantPage() {
                   <input
                     required
                     autoComplete="username"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
                     value={account.username}
                     onChange={(event) =>
                       setAccount({ ...account, username: event.target.value })
@@ -297,7 +365,7 @@ export default function ParticipantPage() {
                 <button className="button primary" disabled={busy}>
                   登录并继续报名
                 </button>
-              </form>
+              </ValidatedForm>
             )}
           </article>
         )}
@@ -330,7 +398,7 @@ export default function ParticipantPage() {
               </a>
               <PhoneBinding
                 onBound={(authenticated) => {
-                  setIdentity(authenticated);
+                  updateIdentity(authenticated);
                   setMember((previous) => ({
                     ...previous,
                     phone: authenticated.user.phone || "",
@@ -344,37 +412,46 @@ export default function ParticipantPage() {
             <button className="button primary" onClick={login}>
               学校 SSO 登录并验证本人报名
             </button>
-            <p>
-              本校成员登录后自动匹配系统中已关联的报名记录。未关联的登记需验证原报名凭证或由数据管理员核实。
-            </p>
-            <form
+            <p>也可使用报名时保存的修改链接。</p>
+            <ValidatedForm
               className="workflow-form"
+              validateField={(field) =>
+                field.name !== "registration-link" ||
+                !!credentialFromLink(field.value)
+              }
               onSubmit={(e) => {
                 e.preventDefault();
                 void run(async () => {
-                  await request(`${base}/access`, { credential });
+                  try {
+                    await request(`${base}/access`, {
+                      credential: credentialFromLink(credential),
+                    });
+                  } catch (cause) {
+                    if ((cause as { status?: number }).status === 403)
+                      throw new Error("报名修改链接已失效。");
+                    throw cause;
+                  }
                   setCredential("");
                   await refresh();
-                  setNotice("本人访问凭证已验证。");
+                  setNotice("已打开报名记录。");
                 });
               }}
             >
               <label>
-                报名专属凭证
+                报名修改链接
                 <input
-                  type="password"
+                  type="url"
+                  name="registration-link"
+                  required
                   autoComplete="off"
                   value={credential}
                   onChange={(e) => setCredential(e.target.value)}
                 />
               </label>
-              <button
-                disabled={busy || !credential}
-                className="button secondary"
-              >
-                验证报名凭证
+              <button disabled={busy} className="button secondary">
+                打开报名记录
               </button>
-            </form>
+            </ValidatedForm>
           </>
         )}
         {own && (
@@ -387,11 +464,11 @@ export default function ParticipantPage() {
                   const session = own.sessions.find(
                     (s) => s.id === a.session_id,
                   );
-                  return `${session?.name || a.session_id} / ${session?.positions.find((p) => p.id === a.position_id)?.name || a.position_id}`;
+                  return `${session?.name || "场次已移除"} / ${session?.positions.find((p) => p.id === a.position_id)?.name || "岗位已移除"}`;
                 })
                 .join("、")}
             </p>
-            {!own.member.identity_verified && (
+            {identity && !own.member.identity_verified && (
               <button
                 disabled={busy}
                 className="button secondary"
@@ -399,11 +476,11 @@ export default function ParticipantPage() {
                   void run(async () => {
                     await request(`${base}/me/bind`, {});
                     await refresh();
-                    setNotice("已验证学校身份并关联本人报名。");
+                    setNotice("报名已关联当前账号。");
                   })
                 }
               >
-                核对并关联当前学校身份
+                关联当前账号
               </button>
             )}
           </article>
@@ -414,7 +491,7 @@ export default function ParticipantPage() {
             <p>
               {own
                 ? `确认 ${own.member.name} 的本场次${attendanceNames[scan.action]}`
-                : "请先使用学校身份登录，或验证本人报名凭证。"}
+                : "请先登录，或使用报名修改链接。"}
             </p>
             <button
               className="button primary"
@@ -441,7 +518,7 @@ export default function ParticipantPage() {
           (own ||
             (identity && profileComplete(identity.user)) ||
             (!identity && entry === "manual")) && (
-            <form
+            <ValidatedForm
               className="workflow-form"
               onSubmit={(e) => {
                 e.preventDefault();
@@ -464,7 +541,7 @@ export default function ParticipantPage() {
                       },
                       "PUT",
                     );
-                    setNotice("本人信息已更新。");
+                    setNotice("已保存。");
                   } else {
                     const result = await request<{
                       member: Member;
@@ -479,9 +556,9 @@ export default function ParticipantPage() {
                       key,
                     });
                     setSavedCredential(result.credential);
-                    setNotice("报名成功，请保存下方本人修改入口。");
+                    setNotice("报名成功。");
                   }
-                  await refresh();
+                  await refreshAfterSave();
                 });
               }}
             >
@@ -535,33 +612,31 @@ export default function ParticipantPage() {
                   placeholder="可填写参加安排或其他需要说明的情况（选填）"
                 />
               </label>
-              <p>
-                报名不会自动产生时长。学校身份与报名凭证仅用于本人记录验证。
-              </p>
               <button disabled={busy} className="button primary">
-                {own ? "保存本人修改" : "提交报名"}
+                {own ? "保存" : "提交报名"}
               </button>
-            </form>
+            </ValidatedForm>
           )}
         {savedCredential && (
           <div className="workflow-session">
-            <h2>保存本人修改入口</h2>
-            <p>凭此入口可访问并修改本人登记，请自行保存。</p>
-            <textarea readOnly aria-label="本人修改入口" value={returnURL} />
+            <h2>报名修改链接</h2>
+            <p>请本人保存，勿转发。</p>
+            <textarea readOnly aria-label="报名修改链接" value={returnURL} />
             <button
               className="button secondary"
               onClick={() =>
                 void navigator.clipboard
                   .writeText(returnURL)
-                  .then(() => setNotice("本人修改入口已复制。"))
+                  .then(() => setNotice("已复制。"))
+                  .catch(() => setError("复制失败，请手动复制链接。"))
               }
             >
-              复制本人修改入口
+              复制报名修改链接
             </button>
           </div>
         )}
         {form?.kind === "intent" && (
-          <form
+          <ValidatedForm
             className="workflow-form"
             onSubmit={(e) => {
               e.preventDefault();
@@ -571,18 +646,20 @@ export default function ParticipantPage() {
                   { name: "", department: "", phone: "", intent, platform },
                   "PUT",
                 );
-                await refresh();
-                setNotice("时长录入意向已保存。");
+                setNotice("已保存。");
+                await refreshAfterSave();
               });
             }}
           >
             <h2>时长录入意向</h2>
             <label>
-              是否申请录入
+              是否申请录入时长
               <select
+                required
                 value={intent}
                 onChange={(e) => setIntent(e.target.value)}
               >
+                <option value="">请选择</option>
                 {["申请录入", "不申请", "待核实"].map((v) => (
                   <option key={v}>{v}</option>
                 ))}
@@ -596,9 +673,9 @@ export default function ParticipantPage() {
               />
             </label>
             <button className="button primary" disabled={busy || !own}>
-              确认本人信息并保存意向
+              保存
             </button>
-          </form>
+          </ValidatedForm>
         )}
         {own && (
           <>
@@ -609,11 +686,14 @@ export default function ParticipantPage() {
               </p>
             ))}
             {own.hours.map((h) => (
-              <p key={h.member_id}>认定时长：{h.recognized ?? "未认定"} 小时</p>
+              <p key={h.member_id}>
+                认定时长：
+                {h.recognized == null ? "未认定" : `${h.recognized} 小时`}
+              </p>
             ))}
           </>
         )}
       </section>
-    </main>
+    </WorkspaceShell>
   );
 }

@@ -7,8 +7,8 @@
   --surface-glass: #ffffffa6;
   --text: #233149;
   --text-strong: #172b43;
-  --text-muted: #65748b;
-  --text-subtle: #8290a5;
+  --text-muted: #5f6f86;
+  --text-subtle: #5f6f86;
   --on-accent: #fff;
   --accent: #2457d6;
   --accent-solid: #2457d6;
@@ -17,7 +17,7 @@
   --accent-border: #a8bce8;
   --border: #e1e7f0;
   --border-strong: #c4d0e1;
-  --success: #168265;
+  --success: #11785b;
   --success-bg: #e9f6ef;
   --success-border: #a3d7c0;
   --warning: #946514;
@@ -30,7 +30,11 @@
   --purple-bg: #f2edfd;
   --purple-border: #cdb4ed;
   --overlay: #17284766;
-  --focus: #85adff;
+  --focus: #2457d6;
+  --scrollbar-thumb: #7b8ba3;
+  --scrollbar-thumb-hover: #5f6f86;
+  --scrollbar-track: transparent;
+  --control-border: #7b8ba3;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -42,10 +46,10 @@
   --text: #dce5f2;
   --text-strong: #f0f4fa;
   --text-muted: #a4b3c9;
-  --text-subtle: #8d9eb6;
+  --text-subtle: #92a2b9;
   --accent: #93b7ff;
   --accent-solid: #3568dc;
-  --accent-hover: #4478ed;
+  --accent-hover: #3769de;
   --accent-bg: #223653;
   --accent-border: #4b6da4;
   --border: #334258;
@@ -64,6 +68,9 @@
   --purple-border: #69518f;
   --overlay: #030810b3;
   --focus: #a2c3ff;
+  --scrollbar-thumb: #6f829d;
+  --scrollbar-thumb-hover: #9cadc4;
+  --control-border: #6f829d;
 }
 html {
   background: var(--page-bg);
@@ -78,6 +85,14 @@ input::placeholder,
 textarea::placeholder {
   color: var(--text-subtle);
   opacity: 1;
+}
+::selection {
+  background: var(--accent-solid);
+  color: var(--on-accent);
+}
+input,
+textarea {
+  caret-color: var(--accent);
 }
 select:focus-visible,
 textarea:focus-visible {
@@ -144,7 +159,7 @@ textarea:focus-visible {
     justify-content: flex-end;
   }
   .activity-topbar > span {
-    min-width: calc(100% - 52px);
+    min-width: 0;
   }
   .activity-topbar > .theme-select {
     margin-left: auto;
@@ -160,4 +175,311 @@ textarea:focus-visible {
     flex-wrap: wrap;
     gap: 14px;
   }
+}
+
+/* Visual polish: depth, status colors, hover feedback, numeric alignment. */
+:root {
+  --shadow-sm: 0 1px 2px #1b2a4a0f, 0 1px 1px #1b2a4a0a;
+  --shadow-md: 0 6px 18px -6px #1b2a4a24, 0 2px 4px #1b2a4a0d;
+  --ring: 0 0 0 3px color-mix(in srgb, var(--accent-solid) 18%, transparent);
+}
+:root[data-theme="dark"] {
+  --shadow-sm: 0 1px 2px #00000040;
+  --shadow-md: 0 8px 22px -8px #00000099;
+}
+body {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+h1,
+h2,
+h3 {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.activity-stat > strong,
+.activity-table td,
+.pagination {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Cards */
+.activity-stat,
+.activity-content .panel {
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.activity-stat {
+  transition:
+    box-shadow 0.18s ease,
+    transform 0.18s ease,
+    border-color 0.18s ease;
+}
+.activity-stat:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+.activity-hero {
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Status badges: dot + real semantic colors */
+.activity-badge {
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-weight: 550;
+  border: 1px solid var(--accent-border);
+}
+.activity-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.activity-badge.green {
+  color: var(--success);
+  background: var(--success-bg);
+  border-color: var(--success-border);
+}
+.activity-badge.purple {
+  color: var(--purple);
+  background: var(--purple-bg);
+  border-color: var(--purple-border);
+}
+.activity-badge.amber {
+  color: var(--warning);
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+}
+.activity-badge.red {
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+}
+.activity-badge.gray {
+  color: var(--text-muted);
+  background: var(--surface-muted);
+  border-color: var(--border);
+}
+
+/* Tables */
+.activity-table th {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+.activity-table tbody tr {
+  transition: background-color 0.12s ease;
+}
+.activity-table tbody tr:hover {
+  background: var(--accent-bg);
+}
+.activity-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* Controls */
+.button {
+  transition:
+    background-color 0.14s ease,
+    border-color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+.button.primary {
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--accent-solid) 40%, transparent);
+}
+.button.secondary:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+}
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent-solid);
+  box-shadow: var(--ring);
+}
+.nav-item {
+  transition:
+    background-color 0.14s ease,
+    color 0.14s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Preserve native scrolling; use a quiet, rounded track on mouse/trackpad devices. */
+html {
+  scrollbar-gutter: stable;
+}
+@media (pointer: fine) and (forced-colors: none) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
+  /* Legacy Safari keeps its native controls and gets the same color tokens. */
+  @supports not (scrollbar-color: auto) {
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+    ::-webkit-scrollbar-track,
+    ::-webkit-scrollbar-corner {
+      background: var(--scrollbar-track);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--scrollbar-thumb);
+      background-clip: padding-box;
+      border: 2px solid transparent;
+      border-radius: 999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background-color: var(--scrollbar-thumb-hover);
+    }
+  }
+}
+@media (prefers-contrast: more) {
+  :root {
+    --scrollbar-thumb: var(--text-strong);
+    --scrollbar-track: var(--surface);
+  }
+  * {
+    scrollbar-width: auto;
+  }
+}
+
+.activity-sidebar,
+.activity-dialog {
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+.activity-dialog {
+  scroll-padding-block: 88px 20px;
+}
+.activity-dialog-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+}
+.activity-table-wrap,
+.workflow-table,
+.workflow-tabs {
+  overscroll-behavior-inline: contain;
+}
+[role="region"][tabindex="0"]:focus-visible,
+[role="tabpanel"]:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+.activity-icon-button:hover:not(:disabled) {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: var(--accent-border);
+}
+.button.secondary {
+  color: var(--text-strong);
+}
+@media (pointer: coarse) {
+  :root
+    :is(
+      .button,
+      .activity-icon-button,
+      .activity-text-button,
+      .password-toggle,
+      .theme-select,
+      .theme-select select,
+      .workflow-tabs button,
+      .activity-tabs button,
+      .import-help summary
+    ) {
+    min-width: 48px;
+    min-height: 48px;
+  }
+  :root
+    :is(
+      input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+      select,
+      textarea
+    ) {
+    font-size: max(1rem, 1em);
+  }
+  .account-password input {
+    padding-right: 52px;
+  }
+}
+
+dialog:modal {
+  overscroll-behavior: contain;
+}
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent);
+}
+.activity-search,
+.theme-select {
+  border-color: var(--control-border);
+}
+:root
+  :is(input, select, textarea):where(
+    :not([type="checkbox"]):not([type="radio"]):not([type="file"])
+  ) {
+  border-color: var(--control-border);
+}
+:root :is(input, select, textarea):focus-visible {
+  border-color: var(--accent);
+}
+:root :is(input, select, textarea):is(:user-invalid, [aria-invalid="true"]) {
+  border-color: var(--danger);
+}
+
+@media (forced-colors: active) {
+  .nav-item[aria-current="page"] {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+  .activity-tabs button {
+    border-bottom-color: Canvas;
+  }
+  .activity-tabs button.selected {
+    border-bottom-color: Highlight;
+  }
+}
+
+.import-cell-error {
+  color: var(--danger);
+  box-shadow: inset 0 -2px var(--danger);
+}
+
+.field-error {
+  display: block;
+  color: var(--danger);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  margin-block: 4px 0;
+  overflow-wrap: anywhere;
+}
+.validation-announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

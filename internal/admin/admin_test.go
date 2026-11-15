@@ -165,7 +165,10 @@ func TestImportUsersAtomicValidationAndInitialLogin(t *testing.T) {
 	type result struct {
 		Valid    bool
 		Imported int
-		Rows     []struct{ Error string }
+		Rows     []struct {
+			Error      string
+			ErrorField string `json:"error_field"`
+		}
 	}
 	preview := decode[result](t, call(csv, false))
 	if !preview.Valid || preview.Imported != 0 {
@@ -176,14 +179,28 @@ func TestImportUsersAtomicValidationAndInitialLogin(t *testing.T) {
 	if count != 0 {
 		t.Fatal("preview wrote a user")
 	}
-	bad := csv + "other,其他,00002,short,formal_user\n"
-	invalid := decode[result](t, call(bad, true))
-	if invalid.Valid || invalid.Imported != 0 || invalid.Rows[1].Error == "" {
-		t.Fatalf("invalid batch: %+v", invalid)
-	}
-	f.db.Model(&model.User{}).Where("username IN ?", []string{"newuser", "other"}).Count(&count)
-	if count != 0 {
-		t.Fatal("invalid batch partially committed")
+	for _, tc := range []struct {
+		name     string
+		password string
+	}{
+		{"too short", "short"},
+		{"too long in UTF-8 bytes", strings.Repeat("密", 25)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bad := csv + "other,其他,00002," + tc.password + ",formal_user\n"
+			response := call(bad, true)
+			invalid := decode[result](t, response)
+			if invalid.Valid || invalid.Imported != 0 || len(invalid.Rows) != 2 || invalid.Rows[1].Error != "初始密码须为12至72字节" || invalid.Rows[1].ErrorField != "password" {
+				t.Fatalf("invalid batch: %+v", invalid)
+			}
+			if strings.Contains(response.Body.String(), tc.password) {
+				t.Fatal("invalid password leaked in response")
+			}
+			f.db.Model(&model.User{}).Where("username IN ?", []string{"newuser", "other"}).Count(&count)
+			if count != 0 {
+				t.Fatal("invalid batch partially committed")
+			}
+		})
 	}
 	w := call(csv, true)
 	created := decode[result](t, w)
@@ -213,7 +230,7 @@ func TestImportUsersAtomicValidationAndInitialLogin(t *testing.T) {
 		t.Fatal("password gate bypassed")
 	}
 	setupPassword := f.request("POST", "/api/v1/auth/setup-password", `{"password":"replacement-secret-456"}`, cookies[0].Value, true)
-	if setupPassword.Code != 200 {
+	if setupPassword.Code != 200 || !strings.Contains(setupPassword.Body.String(), `"auth_method":"session"`) {
 		t.Fatalf("password setup: %s", setupPassword.Body.String())
 	}
 }

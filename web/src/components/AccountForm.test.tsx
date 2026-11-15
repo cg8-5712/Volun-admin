@@ -88,3 +88,38 @@ test("resets the chosen member password and communicates the next-login requirem
     password: "replacement-secret-123",
   });
 });
+
+test("invalid password explains length rules and clears the error after correction", async () => {
+  render(
+    <AccountForm
+      target={{
+        username: "member",
+        name: "测试成员",
+        id: "001",
+        groups: ["formal_user"],
+        status: "active",
+        has_password: true,
+        password_setup_required: false,
+      }}
+      onClose={vi.fn()}
+      onSaved={vi.fn()}
+      onSessionIssue={vi.fn()}
+    />,
+  );
+  const user = userEvent.setup();
+  const password = screen.getByLabelText(/^临时密码/);
+  await user.type(password, "short");
+  await user.click(screen.getByRole("button", { name: "确认重置密码" }));
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(
+    document.getElementById(password.getAttribute("aria-describedby")!)
+      ?.textContent,
+  ).toContain("密码太短。密码长度需为 12–72 字节");
+  expect(document.activeElement).toBe(password);
+  expect(password.getAttribute("aria-invalid")).toBe("true");
+  await user.type(password, "x");
+  expect(password.getAttribute("aria-invalid")).toBe("true");
+  await user.type(password, "-longer-password");
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(password.hasAttribute("aria-invalid")).toBe(false);
+});
